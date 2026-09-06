@@ -1,0 +1,12 @@
+## Interface: 11200
+## Title: Moonie
+## Notes: Shows priority icons for the Moonkin rotation (Insect Swarm, Moonfire, Starfire, Wrath)
+## Author: Max
+## SavedVariables: MoonieDB
+Core.lua
+EnemyTracking.lua
+SelfAuras.lua
+OwlkinFrenzy.lua
+Priority.lua
+Display.lua
+Minimap.lua

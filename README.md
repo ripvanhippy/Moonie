@@ -3,18 +3,19 @@
 This file is the central overview. **Update this file after every change to
 the addon.** If anything is unclear in the next chat: check here first.
 
-Current version: **0.12**. 7 priority rules (rotation column, far right) -
+Current version: **0.13**. 7 priority rules (rotation column, far right) -
 only the single highest-priority icon is shown, with a glow around it,
-a color-coded range number above it (with a "y" suffix and a semi-
-transparent grey backdrop for readability), and a red tint on the icon
-if the target is out of spell range - + status grid on the left (3x3:
-Faerie Fire/Moonfire/Insect Swarm, Owlkin Frenzy) + two small Arcane/
-Nature icons right next to it (own area, see below) + minimap button
-with dropdown menu, a click-through toggle, and a right-click show/hide
-switch for the whole addon (Faerie Fire tracking, click-through, and
-hidden state are all saved and survive a relog). The whole addon
-disables itself on login if the character isn't a Druid. Not yet tested
-in-game.
+a color-coded range number above it (with a " yd" suffix and a bordered,
+semi-transparent grey backdrop for readability), and a red tint on the
+icon if the target is out of spell range - + status grid on the left
+(3x3: Faerie Fire/Moonfire/Insect Swarm, Owlkin Frenzy) + two small
+Arcane/Nature icons right next to it (own area, see below) + minimap
+button with dropdown menu, a click-through toggle, and a right-click
+show/hide switch for the whole addon (Faerie Fire tracking,
+click-through, and hidden state are all saved and survive a relog). The
+whole addon disables itself on login if the character isn't a Druid.
+Out-of-range tint confirmed fixed in-game (v0.13); rest still not fully
+tested in-game.
 
 ---
 
@@ -235,9 +236,10 @@ on the invested talent points:
 Shown directly above the single rotation icon (needs the **UnitXP**
 DLL/addon installed - if it's missing, this number just stays hidden,
 nothing else breaks). Updated every 0.1 sec together with the rotation
-icon itself. Format: one decimal place plus a "y" suffix for clarity,
-e.g. "23.4y". Sits on a small semi-transparent black backdrop (50%
-opacity, reads as soft grey) so it stays readable over any background.
+icon itself. Format: one decimal place plus a " yd" suffix for clarity,
+e.g. "23.4 yd". Sits on a dark grey, 50%-opacity backdrop with a 1px
+black outline, wide enough to fit values up to "200.0 yd" without
+clipping.
 
 Color by distance to target (in yards):
 
@@ -249,17 +251,15 @@ Color by distance to target (in yards):
 | 30.1 - 36 | orange |
 | 36.1+ | red |
 
-**Out-of-range icon tint:** instead of assuming a fixed range, this asks
-the game itself. On login (and whenever the spellbook changes),
-`Moonie_ScanRotationSpellSlots()` (`Core.lua`) finds each rotation
-spell's spellbook slot by matching its icon texture. Every update, the
-current top-priority spell's slot gets checked with the native
-`IsSpellInRange(slot, "spell", "target")` API - if the target is out of
-range, the icon turns red. This is always correct no matter how many
-points are in **Nature's Reach** (extends range to 33/36 yards) or any
-other range talent, including after a respec - nothing needs to be
-updated by hand. Doesn't need UnitXP at all (native API), so this part
-keeps working even if UnitXP isn't installed.
+**Out-of-range icon tint:** compares the live UnitXP distance (the same
+number shown above the icon) against the current max range for the
+rotation spells - 30 yards base, +3 per point in **Nature's Reach**
+(33 yd at 1 point, 36 yd at 2 points). `Moonie_ScanNatureReachTalent()`
+(`Core.lua`) scans the talent tree for the rank on login, on talent
+changes, and every 5 seconds as a safety net (same pattern as the Owlkin
+Frenzy talent scan), so a respec is picked up automatically. Since this
+reads the UnitXP range directly, **UnitXP must be installed** for the
+tint to work (unlike the range number itself, which already required it).
 
 ## Minimap button
 
@@ -316,12 +316,13 @@ from a tooltip (as before).
 
 ## Open items / still to verify in-game
 
-- **`Moonie_ScanRotationSpellSlots()` in `Core.lua`:** finds each
-  rotation spell's spellbook slot by matching icon textures - **needs to
-  be tested in-game**. If `IsSpellInRange` never returns anything (icon
-  texture mismatch, or a rank isn't in the spellbook yet at low level),
-  the icon just never turns red (fails safe) - let me know if that
-  happens and we'll add a fallback.
+- **`Moonie_ScanNatureReachTalent()` in `Core.lua`:** scans the talent
+  tree for "Nature's Reach" (0/1/2 points) - **needs to be tested
+  in-game with 1 and 2 points invested** to confirm the tint switches at
+  33 yd / 36 yd instead of always 30 yd. If the talent name doesn't
+  match exactly (e.g. client language) or `GetTalentInfo`'s return order
+  differs, the rank will read as 0 and the tint will use the base 30 yd
+  range - let me know if that happens.
 - **`Moonie_GetTargetGUID()`** in `EnemyTracking.lua`: currently uses
   `UnitExists("target")` with an assumed 2nd return value (GUID) from
   SuperWoW. **This needs to be tested in-game** - if it doesn't work, I
@@ -409,9 +410,9 @@ from a tooltip (as before).
   (Green/Orange/Red already existed). This is purely informational and
   doesn't affect the red icon tint.
 - **Out-of-range icon tint logic?** → `Core.lua`,
-  `Moonie_IsRotationSpellInRange()` and `Moonie_ScanRotationSpellSlots()`
-  - uses the native `IsSpellInRange` API, so it already adapts to
-    Nature's Reach/talents automatically; nothing to configure here.
+  `Moonie_IsRotationSpellInRange()` and `Moonie_ScanNatureReachTalent()` -
+  the max range (`30 + rank * 3`) is the line to change if the base range
+  or the Nature's Reach bonus is ever different from 30/33/36 yd.
 - **Class restriction (Druid-only)?** → `Core.lua`, near the very top,
   the `if engClass ~= "DRUID" then ... end` block.
 
@@ -421,6 +422,36 @@ line(s) in which file need to be replaced - with a clear start/end marker.
 ---
 
 ## Change history
+
+- **v0.13 - Bugfix: out-of-range icon tint was always red; range number
+  formatting + readability.**
+  - `Core.lua`: replaced the spellbook/`IsSpellInRange` approach entirely -
+    it turned out unreliable on this server (see below). New approach:
+    `Moonie_ScanNatureReachTalent()` scans the talent tree for "Nature's
+    Reach" (0/1/2 points, same tab/index-walk trick as
+    `Moonie_ScanOwlkinTalent()` in `OwlkinFrenzy.lua`, incl. a 5-second
+    safety-net re-scan for respecs that don't fire
+    `CHARACTER_POINTS_CHANGED`). `Moonie_IsRotationSpellInRange()` now
+    just compares the already-displayed live UnitXP range against
+    `30 + (rank * 3)` yards (30/33/36 yd) - no more spellbook slot
+    scanning, no more `IsSpellInRange` call.
+  - (First attempt in this version called `IsSpellInRange(slot, "spell",
+    "target")`, which errored with "unknown unit name: spell" and made
+    the check always report "out of range" - fixing the call signature
+    to `IsSpellInRange(slot, "target")` removed the error, but the tint
+    still didn't reliably reflect Nature's Reach's extended range, so
+    the whole approach was replaced with the talent+UnitXP method above.)
+  - `Display.lua`: range number format changed from `"23.4y"` to
+    `"23.4 yd"` (space + full "yd" instead of a bare "y"). The range
+    backdrop (`rangeBg`) is now 70px wide instead of 50px, so "200.0 yd"
+    fits without clipping, and it now has a 1px black outline around a
+    dark grey, 50%-opacity fill (built from two textures: a black
+    full-size one behind, a dark grey one inset by 1px on top - no
+    texture sublevel argument used, since that errors on 1.12).
+  - **Range tint now needs UnitXP** (it no longer works without it, since
+    it reads the live UnitXP distance directly instead of asking the
+    spellbook) - please confirm UnitXP is installed if the tint doesn't
+    react at all.
 
 - **v0.12 - NEW: Minimap right-click now shows/hides the whole addon
   instead of toggling click-through; range number now has a "y" suffix

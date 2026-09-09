@@ -2,7 +2,7 @@
 ## Title: |cffff8000<Gaha>|r |cff006400Moonie|r
 ## Notes: Shows priority icons for the Moonkin rotation (Insect Swarm, Moonfire, Starfire, Wrath)
 ## Author: Max
-## Version: 0.12
+## Version: 0.13
 ## SavedVariables: MoonieDB
 Core.lua
 EnemyTracking.lua

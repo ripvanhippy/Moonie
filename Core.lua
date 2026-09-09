@@ -120,64 +120,64 @@ function Moonie_GetTargetRange()
 end
 
 -- =====================================================================
--- SPELLBOOK RANGE CHECK (for the out-of-range red icon tint)
--- Talents like Nature's Reach can extend Wrath/Starfire/Moonfire/Insect
--- Swarm from 30 up to 36 yards (2/2), and talents can change at any time
--- via a respec. Rather than tracking that by hand, we just ask the game
--- itself: find each rotation spell's spellbook slot once (by matching
--- its known icon texture), then use the native IsSpellInRange API -
--- it already factors in every range-affecting talent automatically, no
--- matter which one gets invested/removed.
+-- NATURE'S REACH TALENT SCAN (for the out-of-range red icon tint)
+-- Nature's Reach increases the range of Wrath/Starfire/Moonfire/Insect
+-- Swarm: 0 points = 30 yd, 1 point = 33 yd, 2 points = 36 yd. We already
+-- have the live UnitXP distance to the target (Moonie_GetTargetRange
+-- above) - all that's missing is the current max range, so we compare
+-- the two directly instead of asking the spellbook/IsSpellInRange (that
+-- API turned out unreliable on this server for the range check).
+-- Same talent-scan trick as Moonie_ScanOwlkinTalent() in OwlkinFrenzy.lua:
+-- walk every talent tab/index and match by name.
 -- =====================================================================
-Moonie.spellSlots = {}
+Moonie.natureReachRank = 0
 
--- Scans the whole spellbook once and remembers the slot index of each
--- rotation spell. Re-run whenever the spellbook could have changed.
-function Moonie_ScanRotationSpellSlots()
-    Moonie.spellSlots = {}
-    local wanted = {
-        wrath       = Moonie.ICONS.wrath,
-        starfire    = Moonie.ICONS.starfire,
-        moonfire    = Moonie.ICONS.moonfire,
-        insectSwarm = Moonie.ICONS.insectSwarm,
-    }
-    local i = 1
-    while true do
-        local texture = GetSpellTexture(i, BOOKTYPE_SPELL)
-        if not texture then break end
-        local key, iconPath
-        for key, iconPath in pairs(wanted) do
-            if not Moonie.spellSlots[key] and texture == iconPath then
-                Moonie.spellSlots[key] = i
+function Moonie_ScanNatureReachTalent()
+    local tab
+    for tab = 1, 3 do
+        local numTalents = GetNumTalents(tab)
+        local idx
+        for idx = 1, numTalents do
+            local name, _, _, _, rank = GetTalentInfo(tab, idx)
+            if name == "Nature's Reach" then
+                Moonie.natureReachRank = rank
+                return
             end
         end
-        i = i + 1
     end
+    Moonie.natureReachRank = 0
 end
 
--- Re-scan on login and whenever the spellbook changes (new rank learned,
--- etc.) - talents themselves don't change the spellbook layout, but this
--- costs nothing so there's no reason to be stingy with it.
-local spellSlotFrame = CreateFrame("Frame", "MoonieSpellSlotFrame")
-spellSlotFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-spellSlotFrame:RegisterEvent("SPELLS_CHANGED")
-spellSlotFrame:SetScript("OnEvent", function()
-    Moonie_ScanRotationSpellSlots()
+local natureReachFrame = CreateFrame("Frame", "MoonieNatureReachFrame")
+natureReachFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+natureReachFrame:RegisterEvent("CHARACTER_POINTS_CHANGED")
+natureReachFrame:SetScript("OnEvent", function()
+    Moonie_ScanNatureReachTalent()
 end)
 
--- Returns true/false for "is the target in range for this rotation
--- spell right now?" (key = "wrath"/"starfire"/"moonfire"/"insectSwarm",
--- matching Priority.lua's rule[i].key). Returns nil if this can't be
--- determined (no target, spell not found in the spellbook yet) -
--- callers should treat nil like "don't know", i.e. don't tint red.
+-- Safety net, same reasoning as OwlkinFrenzy.lua's talent poll: some
+-- custom respec items don't fire CHARACTER_POINTS_CHANGED reliably.
+local natureReachPollFrame = CreateFrame("Frame", "MoonieNatureReachPollFrame")
+local natureReachLastPoll = 0
+natureReachPollFrame:SetScript("OnUpdate", function()
+    local now = GetTime()
+    if now - natureReachLastPoll < 5 then return end
+    natureReachLastPoll = now
+    Moonie_ScanNatureReachTalent()
+end)
+
+-- Returns true/false for "is the target in range for the rotation spells
+-- right now?", based on the live UnitXP distance and the current
+-- Nature's Reach rank. Returns nil if this can't be determined (UnitXP
+-- missing, or no target) - callers should treat nil like "don't know",
+-- i.e. don't tint red. 'key' is accepted for future use (all 4 rotation
+-- spells currently share the same 30/33/36 yd range).
 function Moonie_IsRotationSpellInRange(key)
     if not key then return nil end
-    local slot = Moonie.spellSlots[key]
-    if not slot then return nil end
-    if not UnitExists("target") then return nil end
-    local inRange = IsSpellInRange(slot, "spell", "target")
-    if inRange == nil then return nil end
-    return inRange == 1
+    local range = Moonie_GetTargetRange()
+    if not range then return nil end
+    local maxRange = 30 + (Moonie.natureReachRank * 3)
+    return range <= maxRange
 end
 
 -- =====================================================================

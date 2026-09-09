@@ -98,12 +98,21 @@ end
 -- no matter what's behind it on screen (black at 50% opacity - reads as
 -- a soft grey plate rather than a stark black box).
 local rangeBg = CreateFrame("Frame", "MoonieRangeBg", mainFrame)
-rangeBg:SetWidth(50)
+rangeBg:SetWidth(70)
 rangeBg:SetHeight(18)
 rangeBg:SetPoint("BOTTOM", iconFrames[1], "TOP", 0, 4)
-local rangeBgTex = rangeBg:CreateTexture(nil, "BACKGROUND")
-rangeBgTex:SetAllPoints(rangeBg)
-rangeBgTex:SetTexture(0, 0, 0, 0.5)
+-- 1px outline: a black full-size texture drawn first (BACKGROUND layer)
+-- as the border, then a dark grey, semi-transparent fill inset by 1px on
+-- top (BORDER layer) - the 1px gap between the two is what reads as a
+-- thin black outline. No CreateTexture sublevel argument used (not
+-- supported in 1.12).
+local rangeBgBorder = rangeBg:CreateTexture(nil, "BACKGROUND")
+rangeBgBorder:SetAllPoints(rangeBg)
+rangeBgBorder:SetTexture(0, 0, 0, 1)
+local rangeBgTex = rangeBg:CreateTexture(nil, "BORDER")
+rangeBgTex:SetPoint("TOPLEFT", rangeBg, "TOPLEFT", 1, -1)
+rangeBgTex:SetPoint("BOTTOMRIGHT", rangeBg, "BOTTOMRIGHT", -1, 1)
+rangeBgTex:SetTexture(0.2, 0.2, 0.2, 0.5)
 rangeBg:Hide()
 
 local rangeText = rangeBg:CreateFontString(nil, "OVERLAY")
@@ -512,7 +521,7 @@ updateFrame:SetScript("OnUpdate", function()
     if range then
         local color = GetRangeColor(range)
         rangeText:SetTextColor(color[1], color[2], color[3])
-        rangeText:SetText(string.format("%.1fy", range))
+        rangeText:SetText(string.format("%.1f yd", range))
         rangeBg:Show()
     else
         rangeBg:Hide()

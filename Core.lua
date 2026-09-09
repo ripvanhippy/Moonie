@@ -6,6 +6,21 @@
 
 Moonie = {}
 
+-- =====================================================================
+-- CLASS CHECK
+-- Moonie is a Balance Druid rotation helper. If the logged-in character
+-- is not a Druid, the WHOLE addon turns itself off right here - no
+-- further checks anywhere else. Every other file starts with
+-- "if Moonie.disabled then return end" as its very first line, so none
+-- of their frames/events/logic are ever created for a non-Druid.
+-- =====================================================================
+local _, engClass = UnitClass("player")
+if engClass ~= "DRUID" then
+    Moonie.disabled = true
+    DEFAULT_CHAT_FRAME:AddMessage("|cffff0000Moonie:|r disabled (character is not a Druid).")
+    return
+end
+
 -- This is where we remember what's currently active.
 -- enemyDebuffs: per target GUID, whether MY Insect Swarm / Moonfire is on it
 -- selfBuffs / selfDebuffs: the 4 "Eclipse"/"Solstice" auras on myself
@@ -92,23 +107,113 @@ function Moonie_GetAuraDuration(unit, index, isDebuff)
 end
 
 -- =====================================================================
--- ADDON LOAD / NAMPOWER CHECK
+-- UNITXP RANGE HELPER
+-- Requires the UnitXP SP3 DLL/addon. Returns the distance to the
+-- current target in yards, or nil if UnitXP isn't installed or there's
+-- no target right now. Used by Display.lua for the plain range NUMBER
+-- shown above the rotation icon (informational only).
+-- =====================================================================
+function Moonie_GetTargetRange()
+    if not UnitXP then return nil end
+    if not UnitExists("target") then return nil end
+    return UnitXP("distanceBetween", "player", "target")
+end
+
+-- =====================================================================
+-- SPELLBOOK RANGE CHECK (for the out-of-range red icon tint)
+-- Talents like Nature's Reach can extend Wrath/Starfire/Moonfire/Insect
+-- Swarm from 30 up to 36 yards (2/2), and talents can change at any time
+-- via a respec. Rather than tracking that by hand, we just ask the game
+-- itself: find each rotation spell's spellbook slot once (by matching
+-- its known icon texture), then use the native IsSpellInRange API -
+-- it already factors in every range-affecting talent automatically, no
+-- matter which one gets invested/removed.
+-- =====================================================================
+Moonie.spellSlots = {}
+
+-- Scans the whole spellbook once and remembers the slot index of each
+-- rotation spell. Re-run whenever the spellbook could have changed.
+function Moonie_ScanRotationSpellSlots()
+    Moonie.spellSlots = {}
+    local wanted = {
+        wrath       = Moonie.ICONS.wrath,
+        starfire    = Moonie.ICONS.starfire,
+        moonfire    = Moonie.ICONS.moonfire,
+        insectSwarm = Moonie.ICONS.insectSwarm,
+    }
+    local i = 1
+    while true do
+        local texture = GetSpellTexture(i, BOOKTYPE_SPELL)
+        if not texture then break end
+        local key, iconPath
+        for key, iconPath in pairs(wanted) do
+            if not Moonie.spellSlots[key] and texture == iconPath then
+                Moonie.spellSlots[key] = i
+            end
+        end
+        i = i + 1
+    end
+end
+
+-- Re-scan on login and whenever the spellbook changes (new rank learned,
+-- etc.) - talents themselves don't change the spellbook layout, but this
+-- costs nothing so there's no reason to be stingy with it.
+local spellSlotFrame = CreateFrame("Frame", "MoonieSpellSlotFrame")
+spellSlotFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+spellSlotFrame:RegisterEvent("SPELLS_CHANGED")
+spellSlotFrame:SetScript("OnEvent", function()
+    Moonie_ScanRotationSpellSlots()
+end)
+
+-- Returns true/false for "is the target in range for this rotation
+-- spell right now?" (key = "wrath"/"starfire"/"moonfire"/"insectSwarm",
+-- matching Priority.lua's rule[i].key). Returns nil if this can't be
+-- determined (no target, spell not found in the spellbook yet) -
+-- callers should treat nil like "don't know", i.e. don't tint red.
+function Moonie_IsRotationSpellInRange(key)
+    if not key then return nil end
+    local slot = Moonie.spellSlots[key]
+    if not slot then return nil end
+    if not UnitExists("target") then return nil end
+    local inRange = IsSpellInRange(slot, "spell", "target")
+    if inRange == nil then return nil end
+    return inRange == 1
+end
+
+-- =====================================================================
+-- ADDON LOAD / NAMPOWER CHECK / UNITXP CHECK
+-- Re-applies the MoonieDB defaults and the saved click-through state on
+-- BOTH events (not just ADDON_LOADED) as a safety net, in case anything
+-- about the saved settings isn't fully ready the very first time you
+-- enter the world after logging in.
 -- =====================================================================
 local coreFrame = CreateFrame("Frame", "MoonieCoreFrame")
 coreFrame:RegisterEvent("ADDON_LOADED")
+coreFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 coreFrame:SetScript("OnEvent", function()
-    if event == "ADDON_LOADED" and arg1 == "Moonie" then
-        -- Saved settings (persist across logins/relogs).
-        -- MoonieDB.trackFaerieFire - on/off via the minimap dropdown menu.
-        -- MoonieDB.clickThrough - on/off via the minimap dropdown menu or right-click.
-        MoonieDB = MoonieDB or {}
-        if MoonieDB.trackFaerieFire == nil then
-            MoonieDB.trackFaerieFire = true
-        end
-        if MoonieDB.clickThrough == nil then
-            MoonieDB.clickThrough = false
-        end
+    if event == "ADDON_LOADED" and arg1 ~= "Moonie" then
+        return
+    end
 
+    -- Saved settings (persist across logins/relogs).
+    -- MoonieDB.trackFaerieFire - on/off via the minimap dropdown menu.
+    -- MoonieDB.clickThrough - on/off via the minimap dropdown menu or right-click.
+    MoonieDB = MoonieDB or {}
+    if MoonieDB.trackFaerieFire == nil then
+        MoonieDB.trackFaerieFire = true
+    end
+    if MoonieDB.clickThrough == nil then
+        MoonieDB.clickThrough = false
+    end
+    -- MoonieDB.hidden - addon fully hidden/disabled via minimap right-click.
+    -- Non-Druids never reach this point at all (see the class check at the
+    -- very top of this file), so this only ever applies to Druids who
+    -- chose to hide the addon themselves.
+    if MoonieDB.hidden == nil then
+        MoonieDB.hidden = false
+    end
+
+    if event == "ADDON_LOADED" then
         if not GetNampowerVersion then
             DEFAULT_CHAT_FRAME:AddMessage("|cffff0000Moonie:|r Nampower not found! Enemy debuff tracking will not work.")
         else
@@ -118,11 +223,20 @@ coreFrame:SetScript("OnEvent", function()
             DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00Moonie:|r loaded, Nampower OK.")
         end
 
-        -- Apply the saved click-through state now that the display frames
-        -- (Display.lua) and the toggle function (Minimap.lua) both exist,
-        -- since ADDON_LOADED only fires after every file has run.
-        if Moonie_ApplyClickthrough then
-            Moonie_ApplyClickthrough()
+        if not UnitXP then
+            DEFAULT_CHAT_FRAME:AddMessage("|cffff0000Moonie:|r UnitXP not found! Range display will not work.")
         end
+    end
+
+    -- Apply the saved click-through state now that the display frames
+    -- (Display.lua) and the toggle function (Minimap.lua) both exist,
+    -- since ADDON_LOADED only fires after every file has run. Re-run on
+    -- PLAYER_ENTERING_WORLD too, so a slow/late SavedVariables load can't
+    -- leave Faerie Fire tracking or click-through in the wrong state.
+    if Moonie_ApplyClickthrough then
+        Moonie_ApplyClickthrough()
+    end
+    if Moonie_ApplyHidden then
+        Moonie_ApplyHidden()
     end
 end)

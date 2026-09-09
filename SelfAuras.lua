@@ -7,6 +7,7 @@
 -- Doesn't need Nampower - plain vanilla API is enough, because you always
 -- see your own auras.
 -- =====================================================================
+if Moonie.disabled then return end
 
 -- Adds an aura to the storage table (if new) or clears it (if gone).
 -- storageTable: Moonie.selfBuffs or Moonie.selfDebuffs

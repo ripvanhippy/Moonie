@@ -7,6 +7,7 @@
 -- simply calculate: "is start+duration already over?" That's simpler and
 -- less error-prone. See Priority.lua (GetRemaining function).
 -- =====================================================================
+if Moonie.disabled then return end
 
 -- Default duration of Insect Swarm / Moonfire (base value, can vary with
 -- talents - if that becomes an issue, we can use the tooltip scanner here too).

@@ -13,6 +13,7 @@
 --   6) Wrath     (Arcane Solstice debuff on me)
 --   7) Wrath     (dump spell: no Eclipse/Solstice active at all)
 -- =====================================================================
+if Moonie.disabled then return end
 
 -- Returns (remainingTime, isActive, fullDuration) for a stored entry
 -- {start=,duration=}. fullDuration is needed for filling in the bars.
@@ -72,31 +73,31 @@ function Moonie_EvaluateRules()
     -- Case B: nature eclipse running with <2s left AND (swarm not on target OR <12s left)
     local condA1 = (not isActive) and (not natEclActive) and (not arcEclActive)
     local condB1 = natEclActive and (natEclRemaining < 2) and ((not isActive) or (isRemaining < 12))
-    rule[1] = { icon = Moonie.ICONS.insectSwarm, visible = (condA1 or condB1), group = nil }
+    rule[1] = { icon = Moonie.ICONS.insectSwarm, visible = (condA1 or condB1), group = nil, key = "insectSwarm" }
 
     -- ---- Rule 2: Moonfire ----
     -- Case A: moonfire not on target AND no Eclipse running at all
     -- Case B: arcane eclipse running with <3.5s left AND (moonfire not on target OR <12s left)
     local condA2 = (not mfActive) and (not natEclActive) and (not arcEclActive)
     local condB2 = arcEclActive and (arcEclRemaining < 3.5) and ((not mfActive) or (mfRemaining < 12))
-    rule[2] = { icon = Moonie.ICONS.moonfire, visible = (condA2 or condB2), group = nil }
+    rule[2] = { icon = Moonie.ICONS.moonfire, visible = (condA2 or condB2), group = nil, key = "moonfire" }
 
     -- ---- Rule 3: Starfire (Arcane Eclipse active) ----
-    rule[3] = { icon = Moonie.ICONS.starfire, visible = arcEclActive, group = "starfire" }
+    rule[3] = { icon = Moonie.ICONS.starfire, visible = arcEclActive, group = "starfire", key = "starfire" }
 
     -- ---- Rule 4: Wrath (Nature Eclipse active) ----
-    rule[4] = { icon = Moonie.ICONS.wrath, visible = natEclActive, group = "wrath" }
+    rule[4] = { icon = Moonie.ICONS.wrath, visible = natEclActive, group = "wrath", key = "wrath" }
 
     -- ---- Rule 5: Starfire (Natural Solstice debuff on me) ----
-    rule[5] = { icon = Moonie.ICONS.starfire, visible = natSolActive, group = "starfire" }
+    rule[5] = { icon = Moonie.ICONS.starfire, visible = natSolActive, group = "starfire", key = "starfire" }
 
     -- ---- Rule 6: Wrath (Arcane Solstice debuff on me) ----
-    rule[6] = { icon = Moonie.ICONS.wrath, visible = arcSolActive, group = "wrath" }
+    rule[6] = { icon = Moonie.ICONS.wrath, visible = arcSolActive, group = "wrath", key = "wrath" }
 
     -- ---- Rule 7: Wrath "dump" (no Eclipse/Solstice active at all) ----
     -- If none of the above is running, just spam Wrath to try to proc an Eclipse.
     local condA7 = (not natEclActive) and (not arcEclActive) and (not natSolActive) and (not arcSolActive)
-    rule[7] = { icon = Moonie.ICONS.wrath, visible = condA7, group = "wrath" }
+    rule[7] = { icon = Moonie.ICONS.wrath, visible = condA7, group = "wrath", key = "wrath" }
 
     -- ---- Remove duplicates ----
     -- Within the same group (starfire: 3+5, wrath: 4+6+7), only the rule

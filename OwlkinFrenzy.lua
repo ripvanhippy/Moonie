@@ -7,6 +7,7 @@
 -- (not since it ended - since it STARTED). How long that cooldown is
 -- depends on how many talent points are invested.
 -- =====================================================================
+if Moonie.disabled then return end
 
 -- Cooldown in seconds, depending on invested talent points.
 -- 1 point = 30s, 2 points = 25s, 3 points = 20s (0 = not talented).
@@ -41,6 +42,20 @@ local talentFrame = CreateFrame("Frame", "MoonieOwlkinTalentFrame")
 talentFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 talentFrame:RegisterEvent("CHARACTER_POINTS_CHANGED")
 talentFrame:SetScript("OnEvent", function()
+    Moonie_ScanOwlkinTalent()
+end)
+
+-- Safety net: some custom respec items (e.g. the goblin brainwashing
+-- device) change your talents WITHOUT firing CHARACTER_POINTS_CHANGED,
+-- so a respec into/out of Owlkin Frenzy could get missed by the events
+-- above alone. This just re-scans every 5 seconds regardless of events -
+-- cheap (a handful of GetTalentInfo calls), so no performance concern.
+local talentPollFrame = CreateFrame("Frame", "MoonieOwlkinTalentPollFrame")
+local talentLastPoll = 0
+talentPollFrame:SetScript("OnUpdate", function()
+    local now = GetTime()
+    if now - talentLastPoll < 5 then return end
+    talentLastPoll = now
     Moonie_ScanOwlkinTalent()
 end)
 

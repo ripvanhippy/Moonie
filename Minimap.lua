@@ -3,13 +3,17 @@
 -- Small button at the top-left edge of the minimap.
 --   Left-click  -> dropdown menu with options (Faerie Fire tracking on/off,
 --                  click-through windows on/off)
---   Right-click -> toggle "click-through": the Moonie windows then stop
---                  reacting to mouse clicks (e.g. so you don't accidentally
---                  drag them during combat)
--- Both settings are saved in MoonieDB and restored on the next login.
+--   Right-click -> show/hide the WHOLE addon (both windows disappear
+--                  completely and stop updating - basically an on/off
+--                  switch). Right-click again to bring it back.
+-- All settings are saved in MoonieDB and restored on the next login.
+-- Non-Druids never get here at all - the whole addon turns itself off
+-- before this file even runs (see the class check in Core.lua).
 -- =====================================================================
+if Moonie.disabled then return end
 
 Moonie.clickThrough = false
+Moonie.hidden = false
 
 -- Applies the saved click-through state to the two main windows. Called
 -- once from Core.lua's ADDON_LOADED handler (after MoonieDB and the
@@ -44,6 +48,44 @@ function Moonie_ToggleClickthrough()
 end
 
 -- =====================================================================
+-- SHOW/HIDE THE WHOLE ADDON (right-click on the minimap button)
+-- Hides both windows completely (Display.lua's update loop also stops
+-- doing any work while hidden, not just visually hiding the frames).
+-- Saved in MoonieDB.hidden, so it stays hidden/shown across relogs.
+-- =====================================================================
+function Moonie_ApplyHidden()
+    Moonie.hidden = MoonieDB and MoonieDB.hidden or false
+    if Moonie.mainFrame then
+        if Moonie.hidden then
+            Moonie.mainFrame:Hide()
+        else
+            Moonie.mainFrame:Show()
+        end
+    end
+    if Moonie.statusFrame then
+        if Moonie.hidden then
+            Moonie.statusFrame:Hide()
+        else
+            Moonie.statusFrame:Show()
+        end
+    end
+end
+
+function Moonie_ToggleHidden()
+    Moonie.hidden = not Moonie.hidden
+    if MoonieDB then
+        MoonieDB.hidden = Moonie.hidden
+    end
+    Moonie_ApplyHidden()
+
+    if Moonie.hidden then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffff00Moonie:|r Addon hidden. Right-click the minimap button again to bring it back.")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffff00Moonie:|r Addon visible again.")
+    end
+end
+
+-- =====================================================================
 -- DROPDOWN MENU (left-click)
 -- =====================================================================
 local dropDown = CreateFrame("Frame", "MoonieDropDown", UIParent, "UIDropDownMenuTemplate")
@@ -51,7 +93,9 @@ local dropDown = CreateFrame("Frame", "MoonieDropDown", UIParent, "UIDropDownMen
 local function InitDropdown()
     local info = {}
     info.text = "Track Faerie Fire"
-    info.checked = MoonieDB and MoonieDB.trackFaerieFire
+    -- Forced to a strict true/false (instead of possibly nil) so the
+    -- checkmark always reflects the real saved value.
+    info.checked = (MoonieDB and MoonieDB.trackFaerieFire) and true or false
     info.func = function()
         MoonieDB.trackFaerieFire = not MoonieDB.trackFaerieFire
     end
@@ -59,7 +103,7 @@ local function InitDropdown()
 
     info = {}
     info.text = "Click-through windows"
-    info.checked = MoonieDB and MoonieDB.clickThrough
+    info.checked = (MoonieDB and MoonieDB.clickThrough) and true or false
     info.func = function()
         Moonie_ToggleClickthrough()
     end
@@ -106,7 +150,7 @@ btnBorder:SetPoint("TOPLEFT", minimapButton, "TOPLEFT", 0, 0)
 minimapButton:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 minimapButton:SetScript("OnClick", function()
     if arg1 == "RightButton" then
-        Moonie_ToggleClickthrough()
+        Moonie_ToggleHidden()
     else
         Moonie_ToggleDropdown()
     end
@@ -116,7 +160,7 @@ minimapButton:SetScript("OnEnter", function()
     GameTooltip:SetOwner(this, "ANCHOR_LEFT")
     GameTooltip:SetText("Moonie")
     GameTooltip:AddLine("Left-click: menu", 1, 1, 1)
-    GameTooltip:AddLine("Right-click: toggle click-through", 1, 1, 1)
+    GameTooltip:AddLine("Right-click: show/hide addon", 1, 1, 1)
     GameTooltip:Show()
 end)
 minimapButton:SetScript("OnLeave", function()

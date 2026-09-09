@@ -12,6 +12,7 @@
 --
 -- Moving the window: hold left mouse button and drag the right (rotation) window.
 -- =====================================================================
+if Moonie.disabled then return end
 
 local FRAME_SIZE = 40
 local FRAME_SPACING = 6
@@ -38,6 +39,8 @@ local ORANGE_COLOR = { 1, 0.6, 0 }
 local RED_COLOR = { 1, 0, 0 }
 local GREY_COLOR = { 0.35, 0.35, 0.35 }
 local GLOW_COLOR = { 1, 0.85, 0.2 }
+local LIGHT_BLUE_COLOR = { 0.4, 0.8, 1 }
+local YELLOW_COLOR = { 1, 1, 0 }
 
 local mainFrame = CreateFrame("Frame", "MoonieDisplay", UIParent)
 mainFrame:SetWidth(FRAME_SIZE)
@@ -86,6 +89,42 @@ for i = 1, 4 do
 
     f:Hide()
     iconFrames[i] = f
+end
+
+-- Range-to-target display (needs UnitXP, see Moonie_GetTargetRange in
+-- Core.lua). Sits right above the rotation icon (iconFrames[1] - the
+-- only one ever shown). Color-coded by distance, number shown as "xx.x".
+-- Semi-transparent backdrop behind the range number so it stays readable
+-- no matter what's behind it on screen (black at 50% opacity - reads as
+-- a soft grey plate rather than a stark black box).
+local rangeBg = CreateFrame("Frame", "MoonieRangeBg", mainFrame)
+rangeBg:SetWidth(50)
+rangeBg:SetHeight(18)
+rangeBg:SetPoint("BOTTOM", iconFrames[1], "TOP", 0, 4)
+local rangeBgTex = rangeBg:CreateTexture(nil, "BACKGROUND")
+rangeBgTex:SetAllPoints(rangeBg)
+rangeBgTex:SetTexture(0, 0, 0, 0.5)
+rangeBg:Hide()
+
+local rangeText = rangeBg:CreateFontString(nil, "OVERLAY")
+rangeText:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+rangeText:SetPoint("CENTER", rangeBg, "CENTER", 0, 0)
+
+-- Picks the range text color for a given distance in yards:
+-- 0-10 light blue (melee), 10.1-20 yellow, 20.1-30 green,
+-- 30.1-36 orange, 36.1+ red.
+local function GetRangeColor(range)
+    if range <= 10 then
+        return LIGHT_BLUE_COLOR
+    elseif range <= 20 then
+        return YELLOW_COLOR
+    elseif range <= 30 then
+        return GREEN_COLOR
+    elseif range <= 36 then
+        return ORANGE_COLOR
+    else
+        return RED_COLOR
+    end
 end
 
 -- =====================================================================
@@ -400,6 +439,16 @@ updateFrame:SetScript("OnUpdate", function()
     if now - lastUpdate < 0.1 then return end
     lastUpdate = now
 
+    -- Addon fully hidden (right-click on the minimap button). Keep both
+    -- windows hidden and skip all the tracking/priority work below -
+    -- Moonie_ToggleHidden()/Moonie_ApplyHidden() (Minimap.lua) already
+    -- called Hide() once, this just keeps it that way every tick.
+    if Moonie.hidden then
+        mainFrame:Hide()
+        statusFrame:Hide()
+        return
+    end
+
     local rules = Moonie_EvaluateRules()
 
     -- ---- Update the left-hand status grid ----
@@ -449,16 +498,38 @@ updateFrame:SetScript("OnUpdate", function()
     -- true rule stacked underneath each other. Rules are already ordered
     -- 1 (highest) to 7 (lowest), so the first visible one wins.
     local topIcon = nil
+    local topKey = nil
     for i = 1, 7 do
         if rules[i].visible then
             topIcon = rules[i].icon
+            topKey = rules[i].key
             break
         end
+    end
+
+    -- ---- Range-to-target display (informational, needs UnitXP) ----
+    local range = Moonie_GetTargetRange()
+    if range then
+        local color = GetRangeColor(range)
+        rangeText:SetTextColor(color[1], color[2], color[3])
+        rangeText:SetText(string.format("%.1fy", range))
+        rangeBg:Show()
+    else
+        rangeBg:Hide()
     end
 
     if topIcon then
         iconFrames[1].texture:SetTexture(topIcon)
         iconFrames[1]:Show()
+        -- Out-of-range tint: asks the spellbook directly (see
+        -- Moonie_IsRotationSpellInRange in Core.lua), so this is always
+        -- correct even with Nature's Reach or any other range talent.
+        local inRange = Moonie_IsRotationSpellInRange(topKey)
+        if inRange == false then
+            iconFrames[1].texture:SetVertexColor(1, 0, 0)
+        else
+            iconFrames[1].texture:SetVertexColor(1, 1, 1)
+        end
     else
         iconFrames[1]:Hide()
     end

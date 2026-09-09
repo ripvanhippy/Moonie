@@ -3,13 +3,18 @@
 This file is the central overview. **Update this file after every change to
 the addon.** If anything is unclear in the next chat: check here first.
 
-Current state: 7 priority rules (rotation column, far right) - only the
-single highest-priority icon is shown, with a glow around it - + status
-grid on the left (3x3: Faerie Fire/Moonfire/Insect Swarm, Owlkin Frenzy) +
-two small Arcane/Nature icons right next to it (own area, see below) +
-minimap button with dropdown menu and click-through toggle (both the
-Faerie Fire tracking setting and the click-through setting are saved and
-survive a relog). Not yet tested in-game.
+Current version: **0.12**. 7 priority rules (rotation column, far right) -
+only the single highest-priority icon is shown, with a glow around it,
+a color-coded range number above it (with a "y" suffix and a semi-
+transparent grey backdrop for readability), and a red tint on the icon
+if the target is out of spell range - + status grid on the left (3x3:
+Faerie Fire/Moonfire/Insect Swarm, Owlkin Frenzy) + two small Arcane/
+Nature icons right next to it (own area, see below) + minimap button
+with dropdown menu, a click-through toggle, and a right-click show/hide
+switch for the whole addon (Faerie Fire tracking, click-through, and
+hidden state are all saved and survive a relog). The whole addon
+disables itself on login if the character isn't a Druid. Not yet tested
+in-game.
 
 ---
 
@@ -36,15 +41,18 @@ Three areas, left to right:
   rules, re-checked every 0.1 sec. Only the highest-priority rule that is
   currently true gets shown (not a stack of every true rule). The icon row
   is the same height as the status grid on the left, so everything lines
-  up.
+  up. Directly above that icon, a number shows the live distance to your
+  target in yards (needs the **UnitXP** DLL/addon - see below), color-coded
+  by range. If the target is out of range for the current top-priority
+  spell, the icon itself is tinted red.
 - **Minimap button** (top-left edge of the minimap, Owlkin Frenzy icon):
   - Left-click: opens the dropdown menu (Faerie Fire tracking on/off,
     click-through windows on/off)
-  - Right-click: toggles "click-through" on both Moonie windows (windows
-    then stop reacting to the mouse - useful in combat so you don't drag
-    them by accident)
-  - Both settings are saved in `MoonieDB` and restored automatically the
-    next time you log in.
+  - Right-click: shows/hides the WHOLE addon (both windows disappear
+    completely and stop updating - an on/off switch for the addon).
+    Right-click again to bring it back.
+  - All settings (Faerie Fire tracking, click-through, hidden state) are
+    saved in `MoonieDB` and restored automatically the next time you log in.
 
 ## Files and what they do
 
@@ -101,9 +109,10 @@ Every global name in the code starts with `Moonie` (e.g. `Moonie`,
      invested.
 6. `Minimap.lua`: button at the minimap edge, left-click opens the
    dropdown menu (writes to `MoonieDB.trackFaerieFire` and
-   `MoonieDB.clickThrough`), right-click toggles `EnableMouse` on both
-   main windows (also writes to `MoonieDB.clickThrough`, so the state
-   survives a relog).
+   `MoonieDB.clickThrough`), right-click shows/hides the whole addon via
+   `Moonie_ToggleHidden()` (writes to `MoonieDB.hidden`, so the state
+   survives a relog). `Display.lua`'s update loop checks `Moonie.hidden`
+   every tick and skips all work while hidden.
 
 ## The 7 priority rules (rotation column, top = most important)
 
@@ -221,6 +230,37 @@ on the invested talent points:
 | 2 | 25 seconds |
 | 3 | 20 seconds |
 
+## Range display (rotation icon) - details
+
+Shown directly above the single rotation icon (needs the **UnitXP**
+DLL/addon installed - if it's missing, this number just stays hidden,
+nothing else breaks). Updated every 0.1 sec together with the rotation
+icon itself. Format: one decimal place plus a "y" suffix for clarity,
+e.g. "23.4y". Sits on a small semi-transparent black backdrop (50%
+opacity, reads as soft grey) so it stays readable over any background.
+
+Color by distance to target (in yards):
+
+| Range | Color |
+|---|---|
+| 0 - 10 | light blue (melee) |
+| 10.1 - 20 | yellow |
+| 20.1 - 30 | green |
+| 30.1 - 36 | orange |
+| 36.1+ | red |
+
+**Out-of-range icon tint:** instead of assuming a fixed range, this asks
+the game itself. On login (and whenever the spellbook changes),
+`Moonie_ScanRotationSpellSlots()` (`Core.lua`) finds each rotation
+spell's spellbook slot by matching its icon texture. Every update, the
+current top-priority spell's slot gets checked with the native
+`IsSpellInRange(slot, "spell", "target")` API - if the target is out of
+range, the icon turns red. This is always correct no matter how many
+points are in **Nature's Reach** (extends range to 33/36 yards) or any
+other range talent, including after a respec - nothing needs to be
+updated by hand. Doesn't need UnitXP at all (native API), so this part
+keeps working even if UnitXP isn't installed.
+
 ## Minimap button
 
 Top-left edge of the minimap, shows the Owlkin Frenzy icon. The ring
@@ -234,12 +274,15 @@ the icon.
   - "Track Faerie Fire" (checkbox) - controls `MoonieDB.trackFaerieFire` -
     only affects the Faerie Fire cell (row 1, column 0), nothing else.
   - "Click-through windows" (checkbox) - controls `MoonieDB.clickThrough` -
-    same effect as right-clicking the button (see below).
-- **Right-click:** toggles `Moonie.clickThrough`. When on: both main
-  windows (rotation column + status grid) stop reacting to the mouse (no
-  more dragging, but also no accidental clicks). When off: back to
-  normal. A chat message shows which state is now active. This setting is
-  saved in `MoonieDB.clickThrough` and restored on the next login.
+    both main windows stop reacting to the mouse (no more dragging, but
+    also no accidental clicks) when on.
+- **Right-click:** toggles `Moonie.hidden` (`Moonie_ToggleHidden()` in
+  `Minimap.lua`). When hidden: both main windows (rotation column +
+  status grid) disappear completely and the update loop in `Display.lua`
+  stops doing any work each tick. Right-click again to bring it back. A
+  chat message confirms which state is now active. Saved in
+  `MoonieDB.hidden` and restored on the next login - if you hid the
+  addon, it stays hidden after a relog too.
 
 ## Icons (located in `Interface\Icons\`)
 
@@ -273,6 +316,12 @@ from a tooltip (as before).
 
 ## Open items / still to verify in-game
 
+- **`Moonie_ScanRotationSpellSlots()` in `Core.lua`:** finds each
+  rotation spell's spellbook slot by matching icon textures - **needs to
+  be tested in-game**. If `IsSpellInRange` never returns anything (icon
+  texture mismatch, or a rank isn't in the spellbook yet at low level),
+  the icon just never turns red (fails safe) - let me know if that
+  happens and we'll add a fallback.
 - **`Moonie_GetTargetGUID()`** in `EnemyTracking.lua`: currently uses
   `UnitExists("target")` with an assumed 2nd return value (GUID) from
   SuperWoW. **This needs to be tested in-game** - if it doesn't work, I
@@ -292,6 +341,9 @@ from a tooltip (as before).
 - **Minimap button position:** currently fixed at the top-left edge of the
   minimap (`Minimap.lua`, `SetPoint("TOPLEFT", Minimap, "TOPLEFT", 0, 20)`).
   No dragging around the minimap ring built in - let me know if you want that.
+- **Show/hide (right-click) not yet tested in-game:** please confirm both
+  windows fully disappear/reappear, and that the hidden state is still
+  correct after a relog.
 - **Faerie Fire spell IDs:** assumed 770/778/9749/9907 (4 ranks, druid
   version "Faerie Fire", NOT the feral version). Please check in-game if
   the "did I cast it" tracking doesn't trigger.
@@ -346,9 +398,22 @@ from a tooltip (as before).
   `TALENT_CD` near the top (`[1] = 30, [2] = 25, [3] = 20`).
 - **Change the minimap button position?** → `Minimap.lua`, the line with
   `minimapButton:SetPoint("TOPLEFT", Minimap, "TOPLEFT", 0, 20)`.
+- **Range number backdrop (size/opacity)?** → `Display.lua`, the `rangeBg`
+  block right after `-- Range-to-target display` (width/height for size,
+  the `0.5` in `rangeBgTex:SetTexture(0, 0, 0, 0.5)` for opacity).
 - **Add another option to the dropdown menu?** → `Minimap.lua`, function
   `InitDropdown()` - add another `info` block + `UIDropDownMenu_AddButton(info)`
   following the same pattern.
+- **Range display colors/thresholds (the yard number)?** → `Display.lua`,
+  `GetRangeColor()` and `LIGHT_BLUE_COLOR`/`YELLOW_COLOR` near the top
+  (Green/Orange/Red already existed). This is purely informational and
+  doesn't affect the red icon tint.
+- **Out-of-range icon tint logic?** → `Core.lua`,
+  `Moonie_IsRotationSpellInRange()` and `Moonie_ScanRotationSpellSlots()`
+  - uses the native `IsSpellInRange` API, so it already adapts to
+    Nature's Reach/talents automatically; nothing to configure here.
+- **Class restriction (Druid-only)?** → `Core.lua`, near the very top,
+  the `if engClass ~= "DRUID" then ... end` block.
 
 If you tell me WHAT you want to change, I'll tell you exactly which
 line(s) in which file need to be replaced - with a clear start/end marker.
@@ -356,6 +421,78 @@ line(s) in which file need to be replaced - with a clear start/end marker.
 ---
 
 ## Change history
+
+- **v0.12 - NEW: Minimap right-click now shows/hides the whole addon
+  instead of toggling click-through; range number now has a "y" suffix
+  and a readable backdrop.**
+  - `Minimap.lua`: new `MoonieDB.hidden` setting with matching
+    `Moonie_ApplyHidden()` / `Moonie_ToggleHidden()` functions (same
+    pattern as the existing click-through functions). Right-click on the
+    minimap button now calls `Moonie_ToggleHidden()` instead of
+    `Moonie_ToggleClickthrough()` - it fully shows/hides both windows.
+    The "Click-through windows" dropdown option is unchanged and still
+    works exactly as before, just no longer tied to right-click.
+    Tooltip text updated to say "Right-click: show/hide addon".
+  - `Core.lua`: added the `MoonieDB.hidden` default (off) next to the
+    existing `MoonieDB.clickThrough` default, and calls
+    `Moonie_ApplyHidden()` on load (same place `Moonie_ApplyClickthrough()`
+    is called), so the hidden state is restored correctly on login/relog.
+  - `Display.lua`: the main `OnUpdate` loop now checks `Moonie.hidden`
+    first - if true, both windows get `Hide()`'d and the rest of the
+    tick (rules, status grid, range check) is skipped entirely, so a
+    hidden addon does no work, not just "invisible but still ticking".
+  - `Display.lua`: the range number above the rotation icon now shows a
+    "y" suffix (e.g. "23.4y" instead of "23.4") and sits on a new small
+    backdrop frame (`rangeBg`, 50%-opacity black, reads as soft grey) so
+    it stays readable over bright backgrounds. Purely visual - the range
+    calculation and out-of-range tint logic are unchanged.
+  - Non-Druid lockout (from v0.11) already covered "disable/hide by
+    default for non-Druids" - the whole addon returns early in `Core.lua`
+    before any frame, button, or event gets created, so nothing needed
+    to change there.
+  - **NOT yet tested in-game.**
+
+- **v0.11 - NEW: Druid-only lockout, range display + out-of-range tint,
+  Owlkin Frenzy respec fix, saved-settings robustness, new title style.**
+  - `Core.lua`: on login, checks `UnitClass("player")`'s English class
+    token - if it's not `"DRUID"`, sets `Moonie.disabled = true`, prints
+    a chat message, and stops loading right there. Every other file now
+    starts with `if Moonie.disabled then return end` as its very first
+    line, so nothing (frames, events, polling) ever gets created for a
+    non-Druid. New function `Moonie_GetTargetRange()` (needs UnitXP,
+    same nil-safe pattern as the Nampower check) returns live yards to
+    target. `ADDON_LOADED` handler also now checks for UnitXP and warns
+    in chat if it's missing (same as the existing Nampower warning).
+  - `Core.lua`: the saved-settings block (`MoonieDB` defaults +
+    `Moonie_ApplyClickthrough()`) now also re-runs on
+    `PLAYER_ENTERING_WORLD`, not just `ADDON_LOADED` - a safety net in
+    case the saved Faerie Fire tracking/click-through state wasn't fully
+    settled the moment you first entered the world.
+  - `Minimap.lua`: the dropdown's two checkmarks are now forced to a
+    strict `true`/`false` instead of a possibly-`nil` value, so they
+    always show the real saved state instead of defaulting to unchecked.
+  - `OwlkinFrenzy.lua`: added a 5-second safety-net re-scan of the talent
+    rank (`Moonie_ScanOwlkinTalent()`), independent of the
+    `CHARACTER_POINTS_CHANGED` event - fixes the Owlkin Frenzy cell not
+    reappearing after respeccing into Balance via a custom respec item
+    that doesn't fire that event reliably.
+  - `Display.lua`: new range number above the rotation icon (color-coded,
+    needs UnitXP, purely informational) and a red tint on the icon
+    itself when the target is out of range for the current top-priority
+    spell. The tint uses `Moonie_IsRotationSpellInRange()` (`Core.lua`),
+    which asks the native `IsSpellInRange` API against the spell's real
+    spellbook slot - found once via `Moonie_ScanRotationSpellSlots()` by
+    matching each rotation spell's icon texture. This automatically
+    accounts for **Nature's Reach** (extends range to 33/36 yards) and
+    any other range talent, including respecs, with nothing hardcoded
+    and no UnitXP dependency for the tint itself.
+  - `Priority.lua`: each of the 7 rules now also carries a `key` field
+    (`"wrath"`/`"starfire"`/`"moonfire"`/`"insectSwarm"`) identifying
+    which actual spell it is, so `Display.lua` knows which spellbook slot
+    to range-check for the current top-priority icon.
+  - `Moonie.toc`: new colored title style
+    (`|cffff8000<Gaha>|r |cff006400Moonie|r`), added a `## Version:` line.
+  - **NOT yet tested in-game.**
 
 - **NEW: Rotation column now shows only the single highest-priority icon,
   with a glow/halo, instead of stacking up to 4 icons (`Display.lua`
